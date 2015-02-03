@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include <boost/bind.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <iterator>
 
@@ -11,7 +12,7 @@
 
 //AdnsClient* AdnsClient::inst_ = NULL;
 
-const uint32_t MAX_GET_ONE_TIME  = 10;
+const uint32_t MAX_GET_ONE_TIME  = 100;
 const uint32_t MAX_GET_WITH_NO_FINISH = MAX_GET_ONE_TIME / 2;
 
 void DefaultCallBack(const vector<string>& results){
@@ -80,8 +81,10 @@ void AdnsClient::Query(const string& object, QueryType type,
 void AdnsClient::DoQuery(const QueryEntryPtr& entryPtr){
     blockQueue_.Put(entryPtr);   
     MutexLock lock(mutex_);
-    queryMap_.insert(QueryPair(entryPtr->object_,
-                entryPtr));  
+
+    string key = entryPtr->object_ + 
+        boost::lexical_cast<string>(entryPtr->type_);
+    queryMap_.insert(QueryPair(key, entryPtr));  
 }
 
 adns_rrtype AdnsClient::TypeConvert(QueryType type){
@@ -161,7 +164,10 @@ void AdnsClient::HandleAnswer(adns_answer *answer){
     }
 
     cout << "owner: " <<  answer->owner << endl;
-    QueryMapItr it = queryMap_.find(answer->owner);  
+    adns_rrtype type = answer->type;
+
+    string key(answer->owner);
+    QueryMapItr it = queryMap_.find(key + boost::lexical_cast<string>(type));  
     if(it == queryMap_.end()){
         //ip.in-addr.arpa
         int len = static_cast<char*>(memchr(answer->owner, 
@@ -179,11 +185,10 @@ void AdnsClient::HandleAnswer(adns_answer *answer){
                 origin = "." + string(tmp, start, end - start) + origin; 
                 start = end + 1;
             }
-            it = queryMap_.find(origin);
+            it = queryMap_.find(origin + boost::lexical_cast<string>(type));
         }
     }
     assert(it != queryMap_.end());
-    adns_rrtype type = answer->type;
     //const typeinfo* typei = NULL;
     //typei = adns__findtype(type);
     vector<string> results;
